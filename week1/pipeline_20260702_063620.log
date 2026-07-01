@@ -1,0 +1,33 @@
+2026-07-02 06:36:20 INFO  Pipeline started
+2026-07-02 06:36:20 INFO  Log file: pipeline_20260702_063620.log
+2026-07-02 06:36:20 INFO  Activating virtual environment
+2026-07-02 06:36:20 INFO  titanic.csv already exists — skipping download
+2026-07-02 06:36:20 INFO  titanic.csv has 891 data rows
+2026-07-02 06:36:20 INFO  Running ETL pipeline
+Loading 891 rows into PostgreSQL...
+Write complete.
+
+=== Avg fare by class ===
+   pclass  total   avg_fare
+0       1    216  84.154687
+1       2    184  20.662183
+2       3    491  13.675550
+
+=== Top 10 passengers who paid most above their class average ===
+                                    name  pclass  ...  class_avg_fare  diff_from_avg
+0     Cardeza, Mr. Thomas Drake Martinez       1  ...           84.15         428.17
+1                       Ward, Miss. Anna       1  ...           84.15         428.17
+2                 Lesurer, Mr. Gustave J       1  ...           84.15         428.17
+3         Fortune, Miss. Alice Elizabeth       1  ...           84.15         178.85
+4                      Fortune, Mr. Mark       1  ...           84.15         178.85
+5         Fortune, Mr. Charles Alexander       1  ...           84.15         178.85
+6             Fortune, Miss. Mabel Helen       1  ...           84.15         178.85
+7  Ryerson, Miss. Susan Parker "Suzette"       1  ...           84.15         178.22
+8             Ryerson, Miss. Emily Borie       1  ...           84.15         178.22
+9               Baxter, Mr. Quigg Edmond       1  ...           84.15         163.37
+
+[10 rows x 5 columns]
+
+Pipeline complete.
+2026-07-02 06:36:21 INFO  ETL complete
+2026-07-02 06:36:21 INFO  Pipeline finished successfully

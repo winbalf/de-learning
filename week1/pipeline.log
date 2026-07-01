@@ -1,0 +1,13 @@
+2024-01-15 08:00:01 INFO  Pipeline started
+2024-01-15 08:00:02 INFO  Loading titanic.csv - 891 rows found
+2024-01-15 08:00:03 INFO  Missing values detected: Age=177, Cabin=687, Embarked=2
+2024-01-15 08:00:04 WARNING Cabin column has 77% nulls - dropping column
+2024-01-15 08:00:05 INFO  Cleaning complete - 891 rows retained
+2024-01-15 08:00:06 INFO  Writing to PostgreSQL table: titanic
+2024-01-15 08:00:07 INFO  Write complete - 891 rows inserted
+2024-01-15 08:00:08 ERROR Connection timeout on retry attempt 1
+2024-01-15 08:00:09 INFO  Retry successful
+2024-01-15 08:00:10 INFO  Pipeline finished successfully
+2024-01-15 08:01:00 INFO  Pipeline started
+2024-01-15 08:01:02 ERROR Failed to connect to PostgreSQL - connection refused
+2024-01-15 08:01:03 ERROR Pipeline aborted
