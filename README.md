@@ -1,6 +1,7 @@
-# Data Engineering Study Plan — Week 1
+# Data Engineering Study Plan
 
-**Theme: Python environment, pandas, Parquet, PostgreSQL, Linux shell & bash scripting**
+**Week 1:** Python environment, pandas, Parquet, PostgreSQL, Linux shell & bash scripting  
+**Week 2:** Advanced SQL — window functions, recursive CTEs, query optimization
 
 > **Setup:** WSL2 Ubuntu on Windows · Python 3.11 · 5–10 hrs/week target
 >
@@ -10,6 +11,8 @@
 
 ## Table of Contents
 
+**Week 1**
+
 1. [Environment Setup](#1-environment-setup)
 2. [Pandas Fundamentals](#2-pandas-fundamentals)
 3. [Parquet vs CSV](#3-parquet-vs-csv)
@@ -18,6 +21,13 @@
 6. [Bash Pipeline Script](#6-bash-pipeline-script)
 7. [Git — Commit Your Work](#7-git--commit-your-work)
 8. [Key Concepts to Remember](#8-key-concepts-to-remember)
+
+**Week 2**
+
+9. [Prerequisites](#9-prerequisites)
+10. [Window Functions](#10-window-functions)
+11. [Query Optimization](#11-query-optimization)
+12. [Week 2 Key Concepts](#12-week-2-key-concepts)
 
 ---
 
@@ -341,7 +351,7 @@ print("Write complete.\n")
 
 with engine.connect() as conn:
     result = pd.read_sql(
-        text("SELECT pclass, COUNT(*) as total, AVG(fare) as avg_fare FROM titanic GROUP BY pclass ORDER BY pclass"),
+        text('SELECT "Pclass" as pclass, COUNT(*) as total, AVG("Fare") as avg_fare FROM titanic GROUP BY "Pclass" ORDER BY "Pclass"'),
         conn
     )
     print("=== Avg fare by class ===")
@@ -349,11 +359,11 @@ with engine.connect() as conn:
 
     result2 = pd.read_sql(text("""
         SELECT
-            name,
-            pclass,
-            fare,
-            ROUND(AVG(fare) OVER (PARTITION BY pclass)::numeric, 2) as class_avg_fare,
-            ROUND((fare - AVG(fare) OVER (PARTITION BY pclass))::numeric, 2) as diff_from_avg
+            "Name" as name,
+            "Pclass" as pclass,
+            "Fare" as fare,
+            ROUND(AVG("Fare") OVER (PARTITION BY "Pclass")::numeric, 2) as class_avg_fare,
+            ROUND(("Fare" - AVG("Fare") OVER (PARTITION BY "Pclass"))::numeric, 2) as diff_from_avg
         FROM titanic
         ORDER BY diff_from_avg DESC
         LIMIT 10
@@ -373,6 +383,8 @@ python db_pipeline.py
 ```
 CSV → pandas (clean) → Parquet → PostgreSQL → SQL window functions → DataFrame
 ```
+
+> **Note:** pandas writes column names in PascalCase (`"Name"`, `"Fare"`, `"Pclass"`, etc.). In PostgreSQL you must quote them — unquoted `name` will fail. See [Week 2 prerequisites](#91-postgresql-column-names).
 
 ---
 
@@ -572,4 +584,223 @@ git commit -m "week1: pandas ETL pipeline - titanic CSV to PostgreSQL"
 
 ---
 
-**Next:** Week 2 — Advanced SQL, Python↔DB patterns, shell scripting automation
+# Week 2 — Advanced SQL
+
+**Theme: Window functions, recursive CTEs, EXPLAIN ANALYZE, indexing**
+
+---
+
+## 9. Prerequisites
+
+Before running Week 2 scripts, make sure Week 1 is complete and the environment is ready.
+
+### 9.1 Activate the virtual environment
+
+```bash
+cd ~/de-learning
+source .venv/bin/activate   # (.venv) should appear in your prompt
+docker start de-postgres    # if not already running
+```
+
+See [SETUP.md](SETUP.md) for full setup and troubleshooting.
+
+### 9.2 Load the titanic table
+
+Week 2 scripts query the `titanic` table created in Week 1:
+
+```bash
+cd ~/de-learning/week1
+python explore.py          # creates titanic_cleaned.parquet
+python db_pipeline.py      # loads data into PostgreSQL
+```
+
+### 9.3 PostgreSQL column names
+
+When pandas writes to PostgreSQL via `to_sql`, it preserves PascalCase column names. Always quote them in SQL:
+
+```sql
+-- Wrong — PostgreSQL lowercases unquoted identifiers
+SELECT name, fare FROM titanic WHERE fare > 100;
+
+-- Correct
+SELECT "Name" as name, "Fare" as fare FROM titanic WHERE "Fare" > 100;
+```
+
+---
+
+## 10. Window Functions
+
+### Why window functions matter
+
+Unlike `GROUP BY`, window functions keep every row and add computed columns — essential for rankings, running totals, period-over-period comparisons, and deduplication in DE pipelines.
+
+### Script — `window_functions.py`
+
+```bash
+cd ~/de-learning/week2
+python window_functions.py
+```
+
+**Examples covered:**
+
+| Function | What it does | DE use case |
+| -------- | ------------ | ----------- |
+| `ROW_NUMBER()` | Unique rank per partition | Deduplication — keep first record per group |
+| `RANK()` / `DENSE_RANK()` | Rank with/without gaps | Top-N per category, leaderboard queries |
+| `LAG()` / `LEAD()` | Previous/next row value | Period-over-period change, gap detection |
+| `SUM() OVER` | Running total | Cumulative metrics, running revenue |
+| `AVG() OVER … ROWS BETWEEN` | Moving average | Rolling KPIs, trend smoothing |
+| `NTILE()` | Split into N buckets | Quartile/decile segmentation |
+
+**ROW_NUMBER — first passenger per class:**
+
+```python
+pd.read_sql(text("""
+    SELECT * FROM (
+        SELECT "Name" as name, "Pclass" as pclass, "PassengerId" as passengerid,
+            ROW_NUMBER() OVER (PARTITION BY "Pclass" ORDER BY "PassengerId") as row_num
+        FROM titanic
+    ) t WHERE row_num = 1
+"""), conn)
+```
+
+**LAG — compare each fare to the previous passenger:**
+
+```python
+pd.read_sql(text("""
+    SELECT "PassengerId" as passengerid, "Name" as name, "Fare" as fare,
+        LAG("Fare")  OVER (ORDER BY "PassengerId") as prev_fare,
+        LEAD("Fare") OVER (ORDER BY "PassengerId") as next_fare,
+        ROUND(("Fare" - LAG("Fare") OVER (ORDER BY "PassengerId"))::numeric, 2) as diff_from_prev
+    FROM titanic
+    ORDER BY "PassengerId"
+    LIMIT 10
+"""), conn)
+```
+
+**Running total + 3-row moving average within class:**
+
+```python
+pd.read_sql(text("""
+    SELECT "PassengerId" as passengerid, "Pclass" as pclass, "Fare" as fare,
+        SUM("Fare") OVER (PARTITION BY "Pclass" ORDER BY "PassengerId") as running_total,
+        ROUND(AVG("Fare") OVER (
+            PARTITION BY "Pclass"
+            ORDER BY "PassengerId"
+            ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+        )::numeric, 2) as moving_avg_3
+    FROM titanic
+    WHERE "Pclass" = 1
+    ORDER BY "PassengerId"
+    LIMIT 10
+"""), conn)
+```
+
+> **Interview answer:** "Window functions compute across a set of rows related to the current row without collapsing them — unlike GROUP BY which returns one row per group."
+
+---
+
+## 11. Query Optimization
+
+### Why this matters
+
+DEs write SQL that runs at scale. Understanding query plans, indexes, and pushdown vs Python-side filtering is the difference between a 2-second dashboard and a 20-minute batch job.
+
+### Script — `query_optimization.py`
+
+```bash
+cd ~/de-learning/week2
+python query_optimization.py
+```
+
+### 11.1 Recursive CTEs
+
+Generate sequences or traverse hierarchies (org charts, bill-of-materials, folder trees):
+
+```sql
+WITH RECURSIVE counter(n) AS (
+    SELECT 1                          -- base case
+    UNION ALL
+    SELECT n + 1 FROM counter WHERE n < 10  -- recursive case
+)
+SELECT n FROM counter;
+```
+
+Org chart traversal — walks the `employees` table from CEO down through all reports, building a path string at each level.
+
+### 11.2 EXPLAIN ANALYZE
+
+Reads the actual query execution plan and timing. Look for:
+
+- **Seq Scan** — full table read (slow on large tables)
+- **Index Scan / Bitmap Index Scan** — uses an index (faster for filtered queries)
+- **actual time** and **rows** — real runtime, not estimates
+
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM titanic WHERE "Fare" > 100;
+```
+
+Create an index and compare:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_titanic_fare ON titanic("Fare");
+```
+
+After indexing, the plan should switch from `Seq Scan` to `Bitmap Index Scan`.
+
+### 11.3 Anti-pattern vs optimised query
+
+| Approach | What happens | Rows transferred |
+| -------- | ------------ | ---------------- |
+| **Bad** — `SELECT *` then filter in pandas | Loads all 891 rows + all columns into Python, then filters | 891 |
+| **Good** — filter and project in SQL | Database returns only matching rows and columns | 53 |
+
+```python
+# Bad: reads everything, filters in Python
+bad = pd.read_sql(text("SELECT * FROM titanic"), conn)
+bad_result = bad[bad["Fare"] > 100][["Name", "Fare", "Pclass"]]
+
+# Good: push filter and projection to the database
+good = pd.read_sql(text("""
+    SELECT "Name" as name, "Fare" as fare, "Pclass" as pclass
+    FROM titanic
+    WHERE "Fare" > 100
+    ORDER BY "Fare" DESC
+"""), conn)
+```
+
+> **Interview answer:** "Always filter and project in SQL before pulling data into Python — the database is optimised for scanning and filtering; Python is not."
+
+---
+
+## 12. Week 2 Key Concepts
+
+
+| Concept | Why it matters |
+| ------- | -------------- |
+| `ROW_NUMBER()` | Deduplication — keep one row per partition (e.g. latest record per customer) |
+| `LAG()` / `LEAD()` | Compare current row to previous/next — YoY change, gap detection |
+| `ROWS BETWEEN` frame | Control exactly which rows the window sees — rolling averages, trailing sums |
+| Recursive CTE | Traverse hierarchies without recursive Python loops |
+| `EXPLAIN ANALYZE` | Read query plans before blaming slow pipelines on "the database" |
+| Index on filter columns | Turns sequential scans into index scans on large tables |
+| Pushdown to SQL | Filter and select columns in SQL, not in pandas — less data over the wire |
+| Quoted column names | pandas → PostgreSQL preserves PascalCase — always use `"Fare"` not `fare` |
+
+---
+
+## Week 2 Checklist
+
+- [x] Window functions — ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD
+- [x] Running totals and moving averages with frame clauses
+- [x] NTILE for bucket segmentation
+- [x] Recursive CTEs — sequence generation and org chart traversal
+- [x] EXPLAIN ANALYZE — read query plans before and after indexing
+- [x] Anti-pattern vs optimised SQL — pushdown vs Python-side filtering
+- [x] PostgreSQL PascalCase column quoting
+- [x] Git commit
+
+---
+
+**Next:** Week 3 — TBD
