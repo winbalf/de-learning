@@ -3,6 +3,8 @@
 **Theme: Python environment, pandas, Parquet, PostgreSQL, Linux shell & bash scripting**
 
 > **Setup:** WSL2 Ubuntu on Windows · Python 3.11 · 5–10 hrs/week target
+>
+> **Project setup guide:** see [SETUP.md](SETUP.md) for virtual environment activation, Docker/PostgreSQL, and troubleshooting.
 
 ---
 
