@@ -25,6 +25,18 @@
 13. [Automated Pipeline + Cron Scheduling](#13-automated-pipeline--cron-scheduling)
 14. [Week 2 Key Concepts](#14-week-2-key-concepts)
 
+**Week 3 — Docker Compose, named volumes, Dockerfile, pipeline observability**
+15. [Week 3 Folder Structure](#15-week-3-folder-structure)
+16. [Docker Compose — single file, full stack](#16-docker-compose--single-file-full-stack)
+17. [Named Volumes — data that survives restarts](#17-named-volumes--data-that-survives-restarts)
+18. [Init SQL — tables created automatically on first boot](#18-init-sql--tables-created-automatically-on-first-boot)
+19. [pgAdmin — visual database browser](#19-pgadmin--visual-database-browser)
+20. [Dockerfile — containerise your Python pipeline](#20-dockerfile--containerise-your-python-pipeline)
+21. [Environment Variables — no hardcoded credentials](#21-environment-variables--no-hardcoded-credentials)
+22. [Pipeline Observability](#22-pipeline-observability)
+23. [Docker Common Commands](#23-docker-common-commands)
+24. [Week 3 Key Concepts](#24-week-3-key-concepts)
+
 ---
 
 # Week 1 — Environment, pandas, Parquet, PostgreSQL, shell
@@ -243,13 +255,13 @@ docker run --name de-postgres \
   -e POSTGRES_USER=deuser \
   -e POSTGRES_PASSWORD=depassword \
   -e POSTGRES_DB=delearning \
-  -p 5433:5432 \
+  -p 5432:5432 \
   -d postgres:15
 
 docker ps   # verify running
 ```
 
-> **If the container stops and credentials fail:** remove and recreate it, then re-run `db_pipeline.py` to reload the data. Docker containers don't persist data by default — we fix this in Week 3 with volumes.
+> **If the container stops and credentials fail:** remove and recreate it, then re-run `db_pipeline.py` to reload the data. Docker containers don't persist data by default — fixed in Week 3 with named volumes.
 
 ### 4.2 ETL pipeline — `db_pipeline.py`
 ```python
@@ -257,7 +269,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 engine = create_engine(
-    "postgresql+psycopg2://deuser:depassword@localhost:5433/delearning"
+    "postgresql+psycopg2://deuser:depassword@localhost:5432/delearning"
 )
 
 df = pd.read_parquet("titanic_cleaned.parquet")
@@ -270,16 +282,16 @@ print("Write complete.\n")
 
 with engine.connect() as conn:
     result = pd.read_sql(
-        text('SELECT "Pclass" as pclass, COUNT(*) as total, AVG("Fare") as avg_fare FROM titanic GROUP BY "Pclass" ORDER BY "Pclass"'),
+        text("SELECT pclass, COUNT(*) as total, AVG(fare) as avg_fare FROM titanic GROUP BY pclass ORDER BY pclass"),
         conn
     )
     print("=== Avg fare by class ===")
     print(result)
 
     result2 = pd.read_sql(text("""
-        SELECT "Name" as name, "Pclass" as pclass, "Fare" as fare,
-            ROUND(AVG("Fare") OVER (PARTITION BY "Pclass")::numeric, 2) as class_avg_fare,
-            ROUND(("Fare" - AVG("Fare") OVER (PARTITION BY "Pclass"))::numeric, 2) as diff_from_avg
+        SELECT name, pclass, fare,
+            ROUND(AVG(fare) OVER (PARTITION BY pclass)::numeric, 2) as class_avg_fare,
+            ROUND((fare - AVG(fare) OVER (PARTITION BY pclass))::numeric, 2) as diff_from_avg
         FROM titanic
         ORDER BY diff_from_avg DESC
         LIMIT 10
@@ -476,7 +488,7 @@ docker exec -it de-postgres psql -U deuser -d delearning -c "SELECT COUNT(*) FRO
 
 ## 10. Window Functions
 
-Window functions compute across related rows without collapsing them — unlike `GROUP BY` which returns one row per group. They are used daily in DE for deduplication, period-over-period comparisons, running totals, and rankings.
+Window functions compute across related rows without collapsing them — unlike `GROUP BY` which returns one row per group. Used daily in DE for deduplication, period-over-period comparisons, running totals, and rankings.
 
 ### Script — `window_functions.py`
 
@@ -485,7 +497,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 engine = create_engine(
-    "postgresql+psycopg2://deuser:depassword@localhost:5433/delearning"
+    "postgresql+psycopg2://deuser:depassword@localhost:5432/delearning"
 )
 
 with engine.connect() as conn:
@@ -493,8 +505,8 @@ with engine.connect() as conn:
     # ROW_NUMBER — first passenger per class (used for deduplication)
     r1 = pd.read_sql(text("""
         SELECT * FROM (
-            SELECT "Name" as name, "Pclass" as pclass, "PassengerId" as passengerid,
-                ROW_NUMBER() OVER (PARTITION BY "Pclass" ORDER BY "PassengerId") as row_num
+            SELECT name, pclass, passengerid,
+                ROW_NUMBER() OVER (PARTITION BY pclass ORDER BY passengerid) as row_num
             FROM titanic
         ) t WHERE row_num = 1
     """), conn)
@@ -503,45 +515,45 @@ with engine.connect() as conn:
 
     # RANK vs DENSE_RANK — fare ranking within class
     r2 = pd.read_sql(text("""
-        SELECT "Name" as name, "Pclass" as pclass, "Fare" as fare,
-            RANK()       OVER (PARTITION BY "Pclass" ORDER BY "Fare" DESC) as rank,
-            DENSE_RANK() OVER (PARTITION BY "Pclass" ORDER BY "Fare" DESC) as dense_rank
-        FROM titanic WHERE "Pclass" = 1
-        ORDER BY "Fare" DESC LIMIT 10
+        SELECT name, pclass, fare,
+            RANK()       OVER (PARTITION BY pclass ORDER BY fare DESC) as rank,
+            DENSE_RANK() OVER (PARTITION BY pclass ORDER BY fare DESC) as dense_rank
+        FROM titanic WHERE pclass = 1
+        ORDER BY fare DESC LIMIT 10
     """), conn)
     print("\n=== RANK vs DENSE_RANK ===")
     print(r2)
 
     # LAG / LEAD — compare each fare to previous/next passenger
     r3 = pd.read_sql(text("""
-        SELECT "PassengerId" as passengerid, "Name" as name, "Fare" as fare,
-            LAG("Fare")  OVER (ORDER BY "PassengerId") as prev_fare,
-            LEAD("Fare") OVER (ORDER BY "PassengerId") as next_fare,
-            ROUND(("Fare" - LAG("Fare") OVER (ORDER BY "PassengerId"))::numeric, 2) as diff_from_prev
-        FROM titanic ORDER BY "PassengerId" LIMIT 10
+        SELECT passengerid, name, fare,
+            LAG(fare)  OVER (ORDER BY passengerid) as prev_fare,
+            LEAD(fare) OVER (ORDER BY passengerid) as next_fare,
+            ROUND((fare - LAG(fare) OVER (ORDER BY passengerid))::numeric, 2) as diff_from_prev
+        FROM titanic ORDER BY passengerid LIMIT 10
     """), conn)
     print("\n=== LAG / LEAD ===")
     print(r3[["passengerid", "name", "fare", "prev_fare", "diff_from_prev"]])
 
     # Running total + 3-row moving average
     r4 = pd.read_sql(text("""
-        SELECT "PassengerId" as passengerid, "Pclass" as pclass, "Fare" as fare,
-            SUM("Fare") OVER (PARTITION BY "Pclass" ORDER BY "PassengerId") as running_total,
-            ROUND(AVG("Fare") OVER (
-                PARTITION BY "Pclass" ORDER BY "PassengerId"
+        SELECT passengerid, pclass, fare,
+            SUM(fare) OVER (PARTITION BY pclass ORDER BY passengerid) as running_total,
+            ROUND(AVG(fare) OVER (
+                PARTITION BY pclass ORDER BY passengerid
                 ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
             )::numeric, 2) as moving_avg_3
-        FROM titanic WHERE "Pclass" = 1
-        ORDER BY "PassengerId" LIMIT 10
+        FROM titanic WHERE pclass = 1
+        ORDER BY passengerid LIMIT 10
     """), conn)
     print("\n=== Running total + moving average ===")
     print(r4)
 
     # NTILE — split into fare quartiles
     r5 = pd.read_sql(text("""
-        SELECT "Name" as name, "Fare" as fare,
-            NTILE(4) OVER (ORDER BY "Fare") as fare_quartile
-        FROM titanic ORDER BY "Fare" DESC LIMIT 12
+        SELECT name, fare,
+            NTILE(4) OVER (ORDER BY fare) as fare_quartile
+        FROM titanic ORDER BY fare DESC LIMIT 12
     """), conn)
     print("\n=== NTILE quartiles ===")
     print(r5)
@@ -571,7 +583,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 engine = create_engine(
-    "postgresql+psycopg2://deuser:depassword@localhost:5433/delearning"
+    "postgresql+psycopg2://deuser:depassword@localhost:5432/delearning"
 )
 
 with engine.connect() as conn:
@@ -615,27 +627,26 @@ with engine.connect() as conn:
     print(r2.to_string(index=False))
 
     # EXPLAIN ANALYZE — before and after index
-    print("\n=== EXPLAIN ANALYZE — without index (cold) ===")
-    plan1 = pd.read_sql(text('EXPLAIN ANALYZE SELECT * FROM titanic WHERE "Fare" > 100'), conn)
+    print("\n=== EXPLAIN ANALYZE — cold ===")
+    plan1 = pd.read_sql(text("EXPLAIN ANALYZE SELECT * FROM titanic WHERE fare > 100"), conn)
     for row in plan1["QUERY PLAN"]:
         print(row)
 
-    conn.execute(text('CREATE INDEX IF NOT EXISTS idx_titanic_fare ON titanic("Fare")'))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_titanic_fare ON titanic(fare)"))
     conn.commit()
 
-    print("\n=== EXPLAIN ANALYZE — with index (warm) ===")
-    plan2 = pd.read_sql(text('EXPLAIN ANALYZE SELECT * FROM titanic WHERE "Fare" > 100'), conn)
+    print("\n=== EXPLAIN ANALYZE — with index ===")
+    plan2 = pd.read_sql(text("EXPLAIN ANALYZE SELECT * FROM titanic WHERE fare > 100"), conn)
     for row in plan2["QUERY PLAN"]:
         print(row)
 
     # Anti-pattern vs optimised
     bad = pd.read_sql(text("SELECT * FROM titanic"), conn)
-    bad_result = bad[bad["Fare"] > 100][["Name", "Fare", "Pclass"]]
+    bad_result = bad[bad["fare"] > 100][["name", "fare", "pclass"]]
     print(f"\nAnti-pattern: loaded {len(bad)} rows, kept {len(bad_result)}")
 
     good = pd.read_sql(text("""
-        SELECT "Name" as name, "Fare" as fare, "Pclass" as pclass
-        FROM titanic WHERE "Fare" > 100 ORDER BY "Fare" DESC
+        SELECT name, fare, pclass FROM titanic WHERE fare > 100 ORDER BY fare DESC
     """), conn)
     print(f"Optimised:    loaded {len(good)} rows directly")
 ```
@@ -647,7 +658,7 @@ with engine.connect() as conn:
 | `Seq Scan` | Full table read — slow at scale |
 | `Bitmap Index Scan` | Uses index — fast for filtered queries |
 | `actual time` | Real execution time in ms |
-| `Planning Time` | Time to build the query plan — drops sharply after warm cache |
+| `Planning Time` | Drops sharply after warm cache |
 
 > **Interview answer:** "Always filter and project in SQL before pulling data into Python — the database is optimised for scanning and filtering; Python is not."
 
@@ -668,7 +679,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger(__name__)
 
 
-def get_engine(host="localhost", port=5433, db="delearning",
+def get_engine(host="localhost", port=5432, db="delearning",
                user="deuser", password="depassword",
                pool_size=5, max_overflow=2):
     url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
@@ -677,7 +688,7 @@ def get_engine(host="localhost", port=5433, db="delearning",
         poolclass=pool.QueuePool,
         pool_size=pool_size,
         max_overflow=max_overflow,
-        pool_pre_ping=True    # test connection before using it
+        pool_pre_ping=True
     )
     log.info(f"Engine created — pool_size={pool_size}")
     return engine
@@ -715,7 +726,7 @@ def load_dataframe(engine, df, table, if_exists="append", chunksize=1000):
         raise
 ```
 
-**Key patterns and why they matter:**
+**Key patterns:**
 
 | Pattern | Why it matters |
 |---|---|
@@ -764,7 +775,6 @@ check_db() {
 
 log "INFO" "Pipeline started"
 source "$VENV/bin/activate"
-log "INFO" "Virtual environment activated"
 
 if check_db; then
     log "INFO" "Database is ready"
@@ -773,7 +783,6 @@ else
     exit 1
 fi
 
-log "INFO" "Running summary refresh..."
 cd "$WEEK2_DIR"
 
 python - << 'PYEOF'
@@ -783,13 +792,11 @@ from db_utils import get_engine, run_query, load_dataframe
 
 engine = get_engine()
 summary = run_query(engine, """
-    SELECT "Pclass" as pclass,
-           COUNT(*)                            AS total,
-           SUM("Survived")                     AS survived,
-           ROUND(AVG("Fare")::numeric, 2)      AS avg_fare,
-           ROUND(100.0 * SUM("Survived") / COUNT(*)::numeric, 1) AS survival_pct,
-           ROUND(AVG("Age")::numeric, 1)       AS avg_age
-    FROM titanic GROUP BY "Pclass" ORDER BY "Pclass"
+    SELECT pclass, COUNT(*) AS total, SUM(survived) AS survived,
+           ROUND(AVG(fare)::numeric, 2) AS avg_fare,
+           ROUND(100.0 * SUM(survived) / COUNT(*)::numeric, 1) AS survival_pct,
+           ROUND(AVG(age)::numeric, 1) AS avg_age
+    FROM titanic GROUP BY pclass ORDER BY pclass
 """)
 print(summary.to_string(index=False))
 load_dataframe(engine, summary, "titanic_summary", if_exists="replace")
@@ -806,30 +813,7 @@ chmod +x auto_pipeline.sh
 bash auto_pipeline.sh
 ```
 
-### Cron scheduling
-
-```bash
-crontab -e   # open crontab (pick nano if prompted)
-```
-
-Add this line:
-```
-* * * * * bash /home/<your-username>/de-learning/week2/auto_pipeline.sh >> /home/<your-username>/de-learning/week2/logs/cron.log 2>&1
-```
-
-Check logs after 2 minutes:
-```bash
-ls -lh ~/de-learning/week2/logs/
-cat ~/de-learning/week2/logs/cron.log
-```
-
-Remove the job when done:
-```bash
-crontab -e   # delete the line, save and exit
-crontab -l   # verify it's gone
-```
-
-**Cron syntax reference:**
+### Cron syntax reference
 ```
 * * * * *  command
 │ │ │ │ └── day of week (0=Sun)
@@ -845,7 +829,6 @@ crontab -l   # verify it's gone
 ```
 
 ### Git — commit week 2
-
 ```bash
 cd ~/de-learning
 git add week2/
@@ -887,4 +870,368 @@ git commit -m "week2: window functions, query optimisation, db_utils, automated 
 
 ---
 
-**Next:** Week 3 — Docker Compose, named volumes (persistent data), multi-service stacks
+# Week 3 — Docker Compose, Named Volumes, Dockerfile & Pipeline Observability
+
+---
+
+## 15. Week 3 Folder Structure
+
+```
+week3/
+├── docker-compose.yml        # full stack definition
+├── Dockerfile                # pipeline container image
+├── requirements.txt          # Python dependencies for the container
+├── pipeline_runner.py        # ETL + DQ + observability
+├── db_utils.py               # copied from week2 — self-contained
+├── logs/                     # pipeline logs (mounted from container)
+└── init/
+    └── 01_create_tables.sql  # runs automatically on first Postgres boot
+```
+
+### Week 3 prerequisites
+```bash
+cd ~/de-learning/week3
+source ../.venv/bin/activate
+
+# Stop the old bare container from week 2
+docker stop de-postgres
+docker rm de-postgres
+```
+
+---
+
+## 16. Docker Compose — single file, full stack
+
+`docker-compose.yml`:
+
+```yaml
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: de-postgres
+    environment:
+      POSTGRES_USER: deuser
+      POSTGRES_PASSWORD: depassword
+      POSTGRES_DB: delearning
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deuser -d delearning"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: de-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: de-pipeline
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: delearning
+      DB_USER: deuser
+      DB_PASSWORD: depassword
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+```
+
+> **Note:** No `version:` key — obsolete in modern Docker Compose, causes warnings if included.
+
+**Key settings:**
+
+| Setting | Why it matters |
+|---|---|
+| `depends_on: condition: service_healthy` | Pipeline waits for Postgres healthcheck — no race condition |
+| `DB_HOST: postgres` | Docker resolves service names as hostnames on its internal network |
+| `restart: unless-stopped` | Postgres and pgAdmin auto-restart on crash or reboot |
+| `restart: "no"` | Pipeline runs once and exits — not a long-running daemon |
+
+---
+
+## 17. Named Volumes — data that survives restarts
+
+**The week 2 problem:** bare `docker run` containers lose all data when removed.
+
+```bash
+# Prove data persists
+docker exec -it de-postgres psql -U deuser -d delearning -c \
+  "INSERT INTO pipeline_runs (pipeline, status) VALUES ('test', 'success');"
+
+docker compose down          # destroy containers
+docker compose up -d         # recreate
+sleep 3
+
+# Data is still there
+docker exec -it de-postgres psql -U deuser -d delearning -c \
+  "SELECT * FROM pipeline_runs;"
+```
+
+**How it works:**
+```
+docker-compose.yml declares:  volumes: postgres_data:
+                                              ↓
+Docker creates volume at:     /var/lib/docker/volumes/week3_postgres_data/
+                                              ↓
+Container mounts it at:       /var/lib/postgresql/data
+                                              ↓
+Container deleted → volume stays → new container mounts same volume → data intact
+```
+
+```bash
+docker volume ls
+docker volume inspect week3_postgres_data
+```
+
+---
+
+## 18. Init SQL — tables created automatically on first boot
+
+Any `.sql` file in `./init/` runs once when Postgres starts on an empty volume.
+
+`init/01_create_tables.sql`:
+```sql
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id          SERIAL PRIMARY KEY,
+    pipeline    TEXT        NOT NULL,
+    status      TEXT        NOT NULL,
+    rows_loaded INT,
+    started_at  TIMESTAMP   DEFAULT NOW(),
+    finished_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS data_quality_log (
+    id          SERIAL PRIMARY KEY,
+    table_name  TEXT        NOT NULL,
+    check_name  TEXT        NOT NULL,
+    passed      BOOLEAN     NOT NULL,
+    details     TEXT,
+    checked_at  TIMESTAMP   DEFAULT NOW()
+);
+```
+
+```bash
+# Verify tables were auto-created
+docker exec -it de-postgres psql -U deuser -d delearning -c "\dt"
+```
+
+> **Note:** Init scripts only run on first boot (empty volume). To re-run: `docker compose down -v` then `docker compose up -d`
+
+---
+
+## 19. pgAdmin — visual database browser
+
+**Access:**
+```bash
+wslview http://$(ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1):8080
+```
+
+**Login:** `admin@gmail.com` / `admin`
+
+> **Note:** pgAdmin rejects `.local` email domains — use `@gmail.com` or similar.
+
+**Connect to Postgres:**
+1. Click **Add New Server**
+2. General tab → Name: `de-local`
+3. Connection tab: Host `postgres`, Port `5432`, DB `delearning`, User `deuser`, Password `depassword`
+
+**WSL2 port forwarding** (if `localhost:8080` doesn't reach Windows browser):
+```powershell
+# Run in PowerShell as Administrator
+$wslIP = (wsl hostname -I).Trim().Split()[0]
+netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=8080 connectaddress=$wslIP
+```
+
+---
+
+## 20. Dockerfile — containerise your Python pipeline
+
+`Dockerfile`:
+```dockerfile
+FROM python:3.11-slim
+
+LABEL maintainer="de-learning"
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "pipeline_runner.py"]
+```
+
+`requirements.txt`:
+```
+pandas==2.2.2
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
+pyarrow==16.0.0
+```
+
+**Why each instruction matters:**
+
+| Instruction | Why |
+|---|---|
+| `FROM python:3.11-slim` | ~130MB vs ~900MB for full image |
+| `PYTHONDONTWRITEBYTECODE=1` | No `.pyc` files — keeps image clean |
+| `PYTHONUNBUFFERED=1` | Logs appear immediately — essential for debugging |
+| `COPY requirements.txt` first | Layer caching — pip skipped on rebuild if deps unchanged |
+| `COPY . .` after pip | Code changes don't invalidate the pip cache layer |
+| `CMD` not `ENTRYPOINT` | CMD can be overridden at runtime — more flexible |
+
+```bash
+docker compose build pipeline
+docker compose run --rm pipeline
+```
+
+---
+
+## 21. Environment Variables — no hardcoded credentials
+
+```python
+engine = get_engine(
+    host=os.getenv("DB_HOST", "localhost"),
+    port=int(os.getenv("DB_PORT", 5432)),
+    db=os.getenv("DB_NAME", "delearning"),
+    user=os.getenv("DB_USER", "deuser"),
+    password=os.getenv("DB_PASSWORD", "depassword"),
+)
+```
+
+| Context | What happens |
+|---|---|
+| Local Python | Uses `localhost` defaults — works as before |
+| Inside Docker | `DB_HOST=postgres` from `docker-compose.yml` — Docker network resolves it |
+| Production (AWS/GCP) | Env vars injected by platform — zero code changes needed |
+
+> **Rule:** Never hardcode credentials. Use env vars locally, a secrets manager in production.
+
+---
+
+## 22. Pipeline Observability
+
+Every run tracked in `pipeline_runs`. Every DQ check logged in `data_quality_log`.
+
+```python
+run_id = log_pipeline_start(engine, "titanic_summary_refresh")
+# ... do work ...
+log_pipeline_end(engine, run_id, status="success", rows_loaded=3)
+```
+
+**DQ checks:**
+
+| Check | What it verifies |
+|---|---|
+| `no_null_names` | No missing passenger names |
+| `no_negative_fares` | No negative ticket prices |
+| `valid_ages` | All ages between 0 and 120 |
+| `unique_passengers` | No duplicate passenger IDs |
+
+**Query audit trail:**
+```bash
+docker exec -it de-postgres psql -U deuser -d delearning -c \
+  "SELECT id, pipeline, status, rows_loaded, started_at FROM pipeline_runs ORDER BY started_at DESC LIMIT 10;"
+```
+
+Failed runs show `NULL` rows — you can see exactly when it broke and when it recovered.
+
+---
+
+## 23. Docker Common Commands
+
+```bash
+# Stack management
+docker compose up -d                      # start all services
+docker compose up -d postgres pgadmin     # start specific services
+docker compose down                       # stop (volumes kept)
+docker compose down -v                    # stop + delete volumes (data gone)
+docker compose ps                         # check service health
+
+# Pipeline
+docker compose build pipeline             # rebuild after code changes
+docker compose run --rm pipeline          # run once, remove container after
+docker compose logs --tail=50 pipeline    # tail logs
+
+# Postgres direct access
+docker exec -it de-postgres psql -U deuser -d delearning
+
+# Volumes
+docker volume ls
+docker volume inspect week3_postgres_data
+```
+
+### Git — commit week 3
+```bash
+cd ~/de-learning
+git add week3/
+git commit -m "week3: docker compose, named volumes, pgadmin, dockerfile, pipeline observability"
+```
+
+---
+
+## 24. Week 3 Key Concepts
+
+| Concept | Why it matters |
+|---|---|
+| `docker compose up -d` | One command starts entire stack — reproducible everywhere |
+| Named volumes | Data survives container removal — essential for stateful services |
+| `depends_on: service_healthy` | No race conditions — pipeline waits for DB to be ready |
+| Docker internal network | Service names resolve as hostnames — `postgres` not `localhost` |
+| Init SQL scripts | Schema bootstrapped automatically — no manual setup |
+| `FROM python:3.11-slim` | Slim images — faster builds, smaller attack surface |
+| Layer caching | Copy requirements before code — pip only reruns when deps change |
+| Environment variables | Same image runs anywhere — credentials injected at runtime |
+| `restart: unless-stopped` | Services recover from crashes automatically |
+| `restart: "no"` | One-shot ETL containers exit cleanly |
+| Pipeline observability | Every run tracked — know immediately when something broke |
+
+**Week 3 checklist:**
+- [x] Docker Compose stack — Postgres + pgAdmin + pipeline
+- [x] Named volumes — data persists across container restarts
+- [x] Volume persistence proved with destroy + recreate test
+- [x] Init SQL — `pipeline_runs` and `data_quality_log` auto-created on boot
+- [x] pgAdmin connected and browsing tables visually
+- [x] WSL2 port forwarding for Windows browser access
+- [x] Dockerfile — pipeline containerised with slim Python base
+- [x] Layer caching — requirements copied before code
+- [x] Environment variables — no hardcoded credentials
+- [x] `pipeline_runner.py` — ETL + DQ checks + observability in one script
+- [x] `docker compose run --rm pipeline` — full containerised run
+- [x] Git commit
+
+---
+
+**Next:** Week 4 — Apache Airflow · DAGs · scheduling · operators · the industry-standard orchestrator

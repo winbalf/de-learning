@@ -1,0 +1,58 @@
+
+services:
+
+  postgres:
+    image: postgres:15
+    container_name: de-postgres
+    environment:
+      POSTGRES_USER: deuser
+      POSTGRES_PASSWORD: depassword
+      POSTGRES_DB: delearning
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # named volume — data persists
+      - ./init:/docker-entrypoint-initdb.d       # SQL files here run on first start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deuser -d delearning"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped   # auto-restart if it crashes
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: de-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped   # auto-restart if it crashes
+
+  pipeline:
+    build:
+      context: .            # build from current directory
+      dockerfile: Dockerfile
+    container_name: de-pipeline
+    environment:
+      DB_HOST: postgres     # use service name, not localhost
+      DB_PORT: 5432
+      DB_NAME: delearning
+      DB_USER: deuser
+      DB_PASSWORD: depassword
+    volumes:
+      - ./logs:/app/logs    # logs written inside container appear on your machine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"           # run once and exit — not a long-running service
+
+volumes:
+  postgres_data:   # Docker manages this on your machine — survives container removal
+  pgadmin_data:
