@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int_passengers_enriched
+    description: >
+      Enriched passenger data built on top of stg_titanic.
+      Adds age groups, fare tiers, solo traveller flag and class labels.
+      Used as the base for all mart models.
+    columns:
+      - name: passenger_id
+        description: "Unique passenger identifier — inherited from staging"
+        data_tests:
+          - unique
+          - not_null
+      - name: age_group
+        description: "child / teenager / adult / senior"
+        data_tests:
+          - accepted_values:
+              values: ['child', 'teenager', 'adult', 'senior']
+      - name: fare_tier
+        description: "budget / economy / standard / premium"
+        data_tests:
+          - accepted_values:
+              values: ['budget', 'economy', 'standard', 'premium']
+      - name: is_solo_traveller
+        description: "True if the passenger travelled with no family members"

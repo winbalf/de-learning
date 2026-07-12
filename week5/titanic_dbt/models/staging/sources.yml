@@ -1,0 +1,29 @@
+# models/staging/sources.yml
+version: 2
+
+sources:
+  - name: raw
+    database: delearning
+    schema: public
+    description: "Raw data loaded by the Python ETL pipeline"
+
+    tables:
+      - name: titanic
+        description: "Raw Titanic passenger data — 891 rows loaded from CSV"
+        columns:
+          - name: PassengerId
+            description: "Unique passenger identifier"
+          - name: Survived
+            description: "0 = died, 1 = survived"
+          - name: Pclass
+            description: "Ticket class: 1 = first, 2 = second, 3 = third"
+          - name: Name
+            description: "Full passenger name"
+          - name: Sex
+            description: "male or female"
+          - name: Age
+            description: "Age in years"
+          - name: Fare
+            description: "Ticket price in British pounds"
+          - name: Embarked
+            description: "Port: C=Cherbourg, Q=Queenstown, S=Southampton"

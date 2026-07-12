@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: fct_survival_by_demographics
+    description: >
+      Survival rates broken down by gender, age group and fare tier.
+      Each row represents one segment within one dimension.
+      Use this model to answer: who was most likely to survive?
+    columns:
+      - name: dimension
+        description: "The grouping dimension: gender, age_group or fare_tier"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['gender', 'age_group', 'fare_tier']
+      - name: segment
+        description: "The specific segment within the dimension (e.g. male, child, premium)"
+        data_tests:
+          - not_null
+      - name: total
+        description: "Total passengers in this segment"
+        data_tests:
+          - not_null
+      - name: survived
+        description: "Number of passengers who survived"
+        data_tests:
+          - not_null
+      - name: survival_rate_pct
+        description: "Survival rate as a percentage 0-100"
+        data_tests:
+          - not_null

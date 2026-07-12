@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: stg_titanic
+    description: "Cleaned and renamed Titanic passenger data"
+    columns:
+      - name: passenger_id
+        description: "Unique passenger identifier"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: passenger_class
+        description: "1, 2 or 3"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3]
+
+      - name: survived
+        description: "0 or 1"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+      - name: gender
+        description: "male or female"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['male', 'female']
+
+      - name: fare_gbp
+        description: "Ticket price — must be non-negative"
+        data_tests:
+          - not_null
+
+      - name: embarkation_code
+        description: "C, Q or S"
+        data_tests:
+          - accepted_values:
+              values: ['C', 'Q', 'S']
