@@ -27,6 +27,8 @@ New to the project? Begin with [Week 1](week1/README.md) to set up your environm
 | **2** | Advanced SQL, DB patterns, automation | [week2/README.md](week2/README.md) |
 | **3** | Docker Compose, named volumes, Dockerfile, observability | [week3/README.md](week3/README.md) |
 | **4** | Apache Airflow — DAGs, operators, sensors, XComs | [week4/README.md](week4/README.md) |
+| **5** | dbt — models, tests, documentation | [week5/README.md](week5/README.md) |
+| **6** | PySpark — DataFrames, Spark SQL, medallion architecture | [week6/README.md](week6/README.md) |
 
 ---
 
@@ -37,6 +39,8 @@ Week 1   CSV → pandas → Parquet → PostgreSQL          (first ETL pipeline)
 Week 2   Window functions · query optimisation · cron  (SQL depth + automation)
 Week 3   Docker Compose stack · containerised pipeline (production-like infra)
 Week 4   Airflow DAGs orchestrating the titanic flow   (industry-standard scheduler)
+Week 5   dbt staging → intermediate → marts + tests    (SQL transformations)
+Week 6   PySpark bronze → silver → gold                (lakehouse pattern at scale)
 ```
 
 All weeks use the **Titanic dataset** as a consistent thread — each week adds a new layer on top of the previous one.
@@ -52,6 +56,8 @@ de-learning/
 ├── week2/              # SQL, db_utils, cron automation
 ├── week3/              # Docker Compose, Dockerfile, observability
 ├── week4/              # Airflow DAGs and operators
+├── week5/              # dbt models, tests, docs
+├── week6/              # PySpark DataFrames, SQL, medallion
 └── README.md           # this file — navigation hub
 ```
 
@@ -63,7 +69,9 @@ de-learning/
 - [x] Week 2 — Advanced SQL & automation
 - [x] Week 3 — Docker Compose & observability
 - [x] Week 4 — Apache Airflow
-- [ ] Week 5 — dbt · SQL transformations · models · tests · documentation
+- [x] Week 5 — dbt · models · tests · documentation
+- [x] Week 6 — PySpark · DataFrames · Spark SQL · medallion architecture
+- [ ] Week 7 — Portfolio project · end-to-end pipeline · GitHub · interview prep
 
 ---
 

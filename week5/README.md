@@ -2,7 +2,7 @@
 
 **Theme:** Transform raw data into clean analytical tables using SQL. Every transformation version-controlled, tested, and documented automatically.
 
-> **Prerequisites:** Week 3 complete · `de-postgres` running on port 5433 · titanic table loaded
+> **Prerequisites:** [Week 3](../week3/README.md) complete · `de-postgres` running on port 5433 · titanic table loaded
 
 ---
 
@@ -453,4 +453,4 @@ dbt clean          # delete target/ folder
 
 ---
 
-**Next:** Week 6 — Spark basics · PySpark DataFrames · reading Parquet at scale
+**Next:** [Week 6 — PySpark · DataFrames · Spark SQL · medallion architecture](../week6/README.md)
