@@ -1,0 +1,19 @@
+name: "inspections_dbt"
+version: "1.0.0"
+config-version: 2
+
+profile: "inspections_dbt"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target"]
+
+models:
+  inspections_dbt: # the name of the project
+    staging: # the staging layer
+      +materialized: view # the materialized view
+    intermediate: # the intermediate layer
+      +materialized: view # the materialized view
+    marts: # the marts layer
+      +materialized: table # the materialized table

@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: raw
+    database: delearning
+    schema: public
+    tables:
+      - name: raw_inspections
+        description: "Raw Chicago food inspection data — 20k rows"

@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_inspections
+    description: "Cleaned Chicago food inspection data"
+    columns:
+      - name: inspection_id
+        data_tests:
+          - unique
+          - not_null
+      - name: result
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['Pass', 'Fail', 'No Entry', 'Out of Business', 'Other']
+      - name: risk_level
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['High', 'Medium', 'Low', 'Unknown']
+      - name: passed
+        data_tests:
+          - not_null
